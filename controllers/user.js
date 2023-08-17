@@ -1,4 +1,4 @@
-const { urlencoded } = require("express");
+const Post = require("../models/Post");
 const User = require("../models/User");
 
 exports.register = async (req, res) => {
@@ -157,11 +157,11 @@ exports.updatePassword = async (req, res) => {
 
     const { oldPassword, newPassword } = req.body;
 
-    if(!oldPassword || !newPassword){
+    if (!oldPassword || !newPassword) {
       return res.status(400).json({
-        success:false,
-        message:"Please provide old and new Password ! "
-      })
+        success: false,
+        message: "Please provide old and new Password ! ",
+      });
     }
 
     const isMatch = await user.matchPassword(oldPassword);
@@ -209,6 +209,130 @@ exports.updateProfile = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Profile is Updated ! ",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deleteMyProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const posts = user.posts;
+    const followers = user.followers;
+    const following = user.following;
+    const userId = user._id;
+    await user.deleteOne();
+
+    // Logout user after deleting
+    res.cookie("token", null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+    });
+
+    // Deleted all Posts of user
+
+    for (let i = 0; i < posts.length; i++) {
+      const post = await Post.findById(posts[i]);
+      await post.deleteOne();
+    }
+
+    // Removing User From follower's following
+    for (let i = 0; i < followers.length; i++) {
+      const follower = await User.findById(followers[i]);
+
+      const index = follower.following.indexOf(userId);
+
+      follower.following.splice(index, 1);
+
+      follower.save();
+    }
+
+    // Removing User from following's follower
+
+    for (let i = 0; i < following.length; i++) {
+      const follow = await User.findById(following[i]);
+
+      const index = follow.followers.indexOf(userId);
+
+      follow.followers.splice(index, 1);
+
+      follow.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile is deleted ! ",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.myProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate(
+      "following followers"
+    );
+
+    const posts = await Post.find({
+      owner: { $in: user._id },
+    });
+
+    res.status(200).json({
+      success: true,
+      user,
+      posts,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User Not Found !",
+      });
+    }
+
+    const posts = await Post.find({
+      owner: { $in: req.params.id },
+    });
+
+    res.status(200).json({
+      success: true,
+      user,
+      posts,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({});
+
+    res.status(200).json({
+      success: true,
+      users,
     });
   } catch (error) {
     res.status(500).json({
